@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  symfony-tests:
+    name: Symfony Tests (PHP ${{ matrix.php-versions }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        php-versions: ['8.2', '8.3']
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-versions }}
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_pgsql, pdo_mysql
+          coverage: xdebug
+          tools: composer:v2
+      
+      - name: Get composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+      
+      - name: Cache composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+      
+      - name: Install Composer dependencies
+        run: composer install --no-progress --prefer-dist --optimize-autoloader
+      
+      - name: Create .env.test.local
+        run: |
+          cat > .env.test.local << EOF
+          APP_ENV=test
+          APP_SECRET=testsecretkey123456789012345678901234567890
+          DATABASE_URL=postgresql://test_user:test_password@127.0.0.1:5432/test_db?serverVersion=16&charset=utf8
+          JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/private.pem
+          JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/public.pem
+          JWT_PASSPHRASE=testpassphrase
+          EOF
+      
+      - name: Generate JWT keys
+        run: |
+          mkdir -p config/jwt
+          openssl genpkey -algorithm RSA -out config/jwt/private.pem -pkeyopt rsa_keygen_bits:4096
+          openssl rsa -pubout -in config/jwt/private.pem -out config/jwt/public.pem
+      
+      - name: Run database migrations
+        run: |
+          php bin/console doctrine:database:create --env=test --no-interaction
+          php bin/console doctrine:migrations:migrate --env=test --no-interaction
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@127.0.0.1:5432/test_db?serverVersion=16&charset=utf8
+      
+      - name: Check Symfony requirements
+        run: php vendor/bin/requirements-checker || true
+      
+      - name: Check the Symfony console
+        run: php bin/console about
+      
+      - name: Validate Doctrine schema
+        run: php bin/console doctrine:schema:validate --skip-sync --env=test
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl
+          tools: composer:v2, cs-fixer, phpstan
+      
+      - name: Get composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+      
+      - name: Cache composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+      
+      - name: Install Composer dependencies
+        run: composer install --no-progress --prefer-dist --optimize-autoloader
+      
+      - name: Check PHP syntax
+        run: find src -name "*.php" -print0 | xargs -0 -n1 php -l
+      
+      - name: Check Twig syntax
+        run: php bin/console lint:twig templates --env=prod
+      
+      - name: Check YAML syntax
+        run: php bin/console lint:yaml config --parse-tags
+      
+      - name: Check Container
+        run: php bin/console lint:container --no-debug
+
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl
+          tools: composer:v2
+      
+      - name: Install Composer dependencies
+        run: composer install --no-progress --prefer-dist --optimize-autoloader
+      
+      - name: Security Check
+        uses: symfonycorp/security-checker-action@v5

@@ -1,0 +1,23 @@
+# Routes Admin avec préfixe /api
+api_admin_controllers:
+    resource:
+        path: ../src/Controller/Admin/
+        namespace: App\Controller\Admin
+    type: attribute
+    prefix: /api
+
+# Routes des autres contrôleurs (hors Admin)
+controllers:
+    resource:
+        path: ../src/Controller/
+        namespace: App\Controller
+    type: attribute
+    exclude: '../src/Controller/Admin/'
+
+# Import correct du dossier routes
+app_routes:
+    resource: 'routes/*.yaml'
+
+# 👇 C'EST ICI QU'ON AJOUTE LA ROUTE DE CONNEXION 👇
+api_login_check:
+    path: /login_check

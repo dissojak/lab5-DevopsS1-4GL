@@ -1,0 +1,62 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment || 'production' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_pgsql
+          tools: composer:v2
+      
+      - name: Install Composer dependencies
+        run: composer install --no-dev --no-progress --prefer-dist --optimize-autoloader --classmap-authoritative
+      
+      - name: Clear and warm up cache
+        run: |
+          php bin/console cache:clear --env=prod --no-debug
+          php bin/console cache:warmup --env=prod --no-debug
+      
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            git pull origin main
+            composer install --no-dev --optimize-autoloader
+            php bin/console cache:clear --env=prod
+            php bin/console doctrine:migrations:migrate --no-interaction --env=prod
+            php bin/console cache:warmup --env=prod
+      
+      - name: Notify deployment success
+        if: success()
+        run: echo "Deployment to ${{ github.event.inputs.environment || 'production' }} completed successfully!"
+      
+      - name: Notify deployment failure
+        if: failure()
+        run: echo "Deployment to ${{ github.event.inputs.environment || 'production' }} failed!"

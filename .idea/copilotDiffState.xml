@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotDiffPersistence">
+    <option name="pendingDiffs">
+      <map>
+        <entry key="$PROJECT_DIR$/.env">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/.env" />
+              <option name="updatedContent" value="# Minimal .env created by assistant&#10;APP_ENV=dev&#10;APP_DEBUG=1&#10;# Generate a random secret: bin/console secrets:generate-keys or use any random string&#10;APP_SECRET=ChangeMePlease1234567890&#10;&#10;# Local sqlite example - adjust if you use MySQL/Postgres&#10;# Use sqlite for quick local boot without DB setup&#10;DATABASE_URL=&quot;sqlite:///%kernel.project_dir%/var/data.db&quot;&#10;&#10;# Mailer - adjust to your SMTP or null transport&#10;MAILER_DSN=null://null&#10;&#10;# Optional: file upload temp dir&#10;UPLOADS_DIR=public/uploads&#10;" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
